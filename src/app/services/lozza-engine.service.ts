@@ -31,6 +31,7 @@ export class LozzaEngineService {
   private currentRejector: ((reason: any) => void) | null = null;
   private pvResults: Map<number, Partial<SinglePvResult>> = new Map();
   private requestedMultiPv = 1;
+  private searchTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   private readyPromise: Promise<void> | null = null;
   private readyResolver: (() => void) | null = null;
@@ -75,6 +76,8 @@ export class LozzaEngineService {
       if (this.readyResolver) {
         this.readyResolver();
       }
+      // Larger transposition table -> deeper search in the same time budget.
+      this.worker.postMessage('setoption name Hash value 128');
       this.worker.postMessage('ucinewgame');
     } else if (line.startsWith('info ')) {
       this.parseInfoLine(line);
@@ -160,6 +163,10 @@ export class LozzaEngineService {
   }
 
   private cleanupSearch() {
+    if (this.searchTimeoutId !== null) {
+      clearTimeout(this.searchTimeoutId);
+      this.searchTimeoutId = null;
+    }
     this.currentResolver = null;
     this.currentRejector = null;
     this.pvResults = new Map();
@@ -195,7 +202,7 @@ export class LozzaEngineService {
 
       // Timeout guard
       const timeoutMs = (searchParams?.movetimeMs || this.searchTimeMs()) + 4000;
-      const timeoutId = setTimeout(() => {
+      this.searchTimeoutId = setTimeout(() => {
         if (this.currentRejector) {
           this.currentRejector(new Error('Search timed out'));
           this.cleanupSearch();
@@ -205,7 +212,10 @@ export class LozzaEngineService {
 
       // Wrapper to clear timeout and convert moves to SAN
       this.currentResolver = (result: MultiPvResult) => {
-        clearTimeout(timeoutId);
+        if (this.searchTimeoutId !== null) {
+          clearTimeout(this.searchTimeoutId);
+          this.searchTimeoutId = null;
+        }
 
         // Convert all moves to SAN
         for (const line of result.lines) {
@@ -237,13 +247,22 @@ export class LozzaEngineService {
 
       this.worker.postMessage(`position fen ${fen}`);
 
-      if (searchParams?.depth) {
+      const movetime = searchParams?.movetimeMs || this.searchTimeMs();
+      if (searchParams?.depth && searchParams?.movetimeMs) {
+        // Depth caps the search; movetime bounds the time. Lozza honors whichever hits first.
+        this.worker.postMessage(`go depth ${searchParams.depth} movetime ${movetime}`);
+      } else if (searchParams?.depth) {
         this.worker.postMessage(`go depth ${searchParams.depth}`);
       } else {
-        const movetime = searchParams?.movetimeMs || this.searchTimeMs();
         this.worker.postMessage(`go movetime ${movetime}`);
       }
     });
+  }
+
+  newGame() {
+    if (this.workerReady) {
+      this.worker.postMessage('ucinewgame');
+    }
   }
 
   stopSearch() {

@@ -24,6 +24,7 @@ export interface EloProfileConfig {
   blunderWeight: number;       // Probability to pick blunder (280cp+)
   maxDepth: number;
   baseThinkMedianMs: number;
+  engineSearchMs: number;      // Actual engine think-time budget (ms) for this tier
 }
 
 export const ELO_PROFILES: Record<string, EloProfileConfig> = {
@@ -41,7 +42,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.14,
     blunderWeight: 0.04,
     maxDepth: 12,
-    baseThinkMedianMs: 3200
+    baseThinkMedianMs: 3200,
+    engineSearchMs: 1000
   },
   '1700': {
     tier: '1700',
@@ -57,7 +59,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.09,
     blunderWeight: 0.01,
     maxDepth: 14,
-    baseThinkMedianMs: 3400
+    baseThinkMedianMs: 3400,
+    engineSearchMs: 1600
   },
   '1100': {
     tier: '1100',
@@ -73,7 +76,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.18,
     blunderWeight: 0.06,
     maxDepth: 10,
-    baseThinkMedianMs: 2800
+    baseThinkMedianMs: 2800,
+    engineSearchMs: 700
   },
   '800': {
     tier: '800',
@@ -89,7 +93,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.20,
     blunderWeight: 0.10,
     maxDepth: 8,
-    baseThinkMedianMs: 2400
+    baseThinkMedianMs: 2400,
+    engineSearchMs: 500
   },
   '2000': {
     tier: '2000',
@@ -105,7 +110,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.06,
     blunderWeight: 0.00,
     maxDepth: 16,
-    baseThinkMedianMs: 3600
+    baseThinkMedianMs: 3600,
+    engineSearchMs: 2200
   },
   '2300': {
     tier: '2300',
@@ -121,7 +127,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.04,
     blunderWeight: 0.00,
     maxDepth: 18,
-    baseThinkMedianMs: 3800
+    baseThinkMedianMs: 3800,
+    engineSearchMs: 3000
   },
   'max': {
     tier: 'max',
@@ -137,7 +144,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.0,
     blunderWeight: 0.0,
     maxDepth: 22,
-    baseThinkMedianMs: 1200
+    baseThinkMedianMs: 1200,
+    engineSearchMs: 4000
   },
   // Backwards compatibility aliases
   '1200': {
@@ -154,7 +162,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.17,
     blunderWeight: 0.06,
     maxDepth: 10,
-    baseThinkMedianMs: 3000
+    baseThinkMedianMs: 3000,
+    engineSearchMs: 700
   },
   '1500': {
     tier: '1500',
@@ -170,7 +179,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.12,
     blunderWeight: 0.04,
     maxDepth: 12,
-    baseThinkMedianMs: 3400
+    baseThinkMedianMs: 3400,
+    engineSearchMs: 1200
   },
   '1800': {
     tier: '1800',
@@ -186,7 +196,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.07,
     blunderWeight: 0.01,
     maxDepth: 14,
-    baseThinkMedianMs: 3600
+    baseThinkMedianMs: 3600,
+    engineSearchMs: 1800
   },
   '2100': {
     tier: '2100',
@@ -202,7 +213,8 @@ export const ELO_PROFILES: Record<string, EloProfileConfig> = {
     mistakeWeight: 0.04,
     blunderWeight: 0.00,
     maxDepth: 16,
-    baseThinkMedianMs: 3800
+    baseThinkMedianMs: 3800,
+    engineSearchMs: 2400
   }
 };
 
@@ -294,6 +306,11 @@ export class GameStateService implements OnDestroy {
   private lastKnownSanMovesCount = 0;
   private calculationThinksThisGame = 0;
 
+  // Inbound message rate limiting
+  private msgWindowStart = 0;
+  private msgCountInWindow = 0;
+  private readonly MSG_RATE_LIMIT = 40;
+
   constructor() {
     this.subscriptions.add(
       this.stateUpdateSubject.pipe(debounceTime(80)).subscribe(update => {
@@ -313,11 +330,52 @@ export class GameStateService implements OnDestroy {
   }
 
   handleMessage(message: any) {
-    if (message.type === 'POSITION_UPDATE' && message.fen) {
+    if (!message || typeof message !== 'object') return;
+
+    if (message.type === 'POSITION_UPDATE') {
+      if (this.isRateLimited()) return;
+      if (!this.isValidPositionMessage(message)) return;
       this.handlePositionUpdate(message);
     } else if (message.type === 'CLEAR_STATE') {
       this.clearState();
     }
+  }
+
+  private isValidPositionMessage(message: any): boolean {
+    if (typeof message.fen !== 'string' || message.fen.length === 0 || message.fen.length > 128) {
+      return false;
+    }
+    try {
+      new Chess(message.fen);
+    } catch (_) {
+      return false;
+    }
+    if (message.myColor !== undefined && message.myColor !== 'w' && message.myColor !== 'b') {
+      return false;
+    }
+    if (!this.isValidClock(message.myClockSec) || !this.isValidClock(message.oppClockSec)) {
+      return false;
+    }
+    if (message.sanMoves !== undefined) {
+      if (!Array.isArray(message.sanMoves)) return false;
+      if (message.sanMoves.some((m: any) => typeof m !== 'string')) return false;
+    }
+    return true;
+  }
+
+  private isValidClock(v: any): boolean {
+    if (v === undefined || v === null) return true;
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  }
+
+  private isRateLimited(): boolean {
+    const now = Date.now();
+    if (now - this.msgWindowStart > 1000) {
+      this.msgWindowStart = now;
+      this.msgCountInWindow = 0;
+    }
+    this.msgCountInWindow++;
+    return this.msgCountInWindow > this.MSG_RATE_LIMIT;
   }
 
   private initTabSync() {
@@ -415,6 +473,7 @@ export class GameStateService implements OnDestroy {
   }
 
   private resetGameSession() {
+    this.engine.newGame();
     this.gameHistory = [];
     this.gameMovesCount.set(0);
     this.consecutiveT1Count.set(0);
@@ -461,7 +520,7 @@ export class GameStateService implements OnDestroy {
     this.suggestedDelaySec.set(delaySec);
     this.remainingDelaySec.set(delaySec);
     this.pacingCategory.set(category);
-    
+
     if (!this.autoConcealMove() || delaySec <= 0.5) {
       this.isMoveRevealed.set(true);
       this.isPacingSafe.set(true);
@@ -620,9 +679,11 @@ export class GameStateService implements OnDestroy {
       this.startPacingCountdown(pacing.suggestedDelayMs, pacing.category);
 
       const multipv = 4; // Always evaluate top 4 lines for rich tactical visibility
+      const engineMs = this.computeEngineSearchMs(profile, pacing, myClockSec);
 
       this.pendingSearchPromise = this.engine.getBestMoves(fen, {
-        movetimeMs: Math.max(800, baseTime),
+        movetimeMs: engineMs,
+        depth: profile.maxDepth,
         multipv: multipv
       });
 
@@ -720,6 +781,27 @@ export class GameStateService implements OnDestroy {
 
     const estCaps = Math.min(99, Math.max(50, Math.round(100 / (1 + Math.pow(acpl / 35, 0.85)))));
     this.estimatedAccuracy.set(estCaps);
+  }
+
+  /** Real engine think-time for the tier, clamped safely under time pressure. */
+  private computeEngineSearchMs(
+    profile: EloProfileConfig,
+    pacing: { searchTimeMs: number },
+    clockSec?: number | null
+  ): number {
+    const userFloor = this.engine.searchTimeMs();
+    let ms = Math.max(userFloor, profile.engineSearchMs);
+
+    if (clockSec !== undefined && clockSec !== null && clockSec > 0) {
+      // Under 60s, never think longer than the safe pacing window.
+      if (clockSec <= 60) {
+        ms = Math.min(ms, pacing.searchTimeMs);
+      }
+      // Never spend more than ~7% of the remaining clock on a single move.
+      ms = Math.min(ms, Math.max(200, Math.round(clockSec * 1000 * 0.07)));
+    }
+
+    return Math.max(300, Math.min(6000, Math.round(ms)));
   }
 
   private calculateTrimodalPacingDelay(

@@ -2,7 +2,7 @@ import { Chess } from 'chess.js';
 
 /**
  * Pure 100% Class-Only Isolated-World Chess Board Reader
- * 
+ *
  * Technical Stealth & Anti-Cheat Invisibility:
  * - ZERO Main-World Script Injection: Absolutely NO <script> tags, eval, or window modifications
  * - ZERO DOM Mutation / Pollution: Never creates elements, overlays, styles, or attributes in the page DOM
@@ -433,8 +433,9 @@ function initClassOnlyBoardReader() {
 
   // Handle explicit refresh requests from side panel
   try {
-    chrome.runtime.onMessage.addListener((message) => {
-      if (message.type === 'REQUEST_POSITION') {
+    chrome.runtime.onMessage.addListener((message, sender) => {
+      if (sender.id !== chrome.runtime.id) return;
+      if (message && message.type === 'REQUEST_POSITION') {
         emitUpdate();
       }
     });
