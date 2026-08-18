@@ -9,6 +9,7 @@ describe('GameStateService', () => {
   let mockEngine: {
     getBestMoves: ReturnType<typeof vi.fn>;
     stopSearch: ReturnType<typeof vi.fn>;
+    newGame: ReturnType<typeof vi.fn>;
     isSearching: WritableSignal<boolean>;
     searchTimeMs: WritableSignal<number>;
   };
@@ -19,6 +20,7 @@ describe('GameStateService', () => {
     mockEngine = {
       getBestMoves: vi.fn(),
       stopSearch: vi.fn(),
+      newGame: vi.fn(),
       isSearching: isSearchingSignal,
       searchTimeMs: signal(1000)
     };
@@ -297,5 +299,40 @@ describe('GameStateService', () => {
     expect(service.selectedMove()).toBeNull();
     expect(service.gameMovesCount()).toBe(0);
     expect(mockEngine.stopSearch).toHaveBeenCalled();
+  });
+
+  it('should validate FEN, clock, color, and sanMoves on inbound messages', () => {
+    const valid = (service as any).isValidPositionMessage.bind(service);
+    const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+    expect(valid({ fen: startFen })).toBe(true);
+    expect(valid({ fen: startFen, myColor: 'b', myClockSec: 30, sanMoves: ['e4'] })).toBe(true);
+
+    expect(valid({ fen: 'not-a-fen' })).toBe(false);
+    expect(valid({ fen: 42 })).toBe(false);
+    expect(valid({})).toBe(false);
+    expect(valid({ fen: startFen, myClockSec: -5 })).toBe(false);
+    expect(valid({ fen: startFen, oppClockSec: Infinity })).toBe(false);
+    expect(valid({ fen: startFen, myColor: 'z' })).toBe(false);
+    expect(valid({ fen: startFen, sanMoves: 'e4' })).toBe(false);
+    expect(valid({ fen: startFen, sanMoves: ['e4', 5] })).toBe(false);
+  });
+
+  it('should ignore POSITION_UPDATE messages with an invalid FEN', async () => {
+    const handleMessage = (service as any).handleMessage.bind(service);
+    handleMessage({ type: 'POSITION_UPDATE', fen: 'totally-invalid', sanMoves: [] });
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(mockEngine.getBestMoves).not.toHaveBeenCalled();
+    expect(service.connectionStatus()).toBe('no-game');
+  });
+
+  it('should rate-limit a flood of inbound messages', () => {
+    const isRateLimited = (service as any).isRateLimited.bind(service);
+    let blockedAt = -1;
+    for (let i = 0; i < 60; i++) {
+      if (isRateLimited()) { blockedAt = i; break; }
+    }
+    expect(blockedAt).toBeGreaterThanOrEqual(40);
   });
 });

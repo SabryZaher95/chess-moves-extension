@@ -28,6 +28,7 @@ describe('App Component', () => {
     const mockEngine = {
       getBestMoves: vi.fn(),
       stopSearch: vi.fn(),
+      newGame: vi.fn(),
       isSearching: signal(false),
       searchTimeMs: signal(1000)
     };
