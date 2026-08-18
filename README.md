@@ -1,59 +1,43 @@
-# ChessMovesExtension
+# Tab Notes - Stealth Chess Assistant Extension
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.20.
+Tab Notes is a high-security, privacy-focused Chrome Extension that integrates a calibrated UCI chess engine (Lozza) into a modern Angular side panel.
 
-## Development server
+## Architecture & Anti-Detection Highlights
 
-To start a local development server, run:
+- **100% Pure Isolated-World Execution**: Runs strictly inside Chrome's isolated world with zero main-world script injection, zero prototype tampering, and zero DOM pollution.
+- **Trimodal Human Move Pacing**: Models realistic human decision times with reflex, intuitive, and deep calculation distributions, eliminating flat timing signatures.
+- **Multi-Game SPA Session Isolation**: Automatically detects rematches and new games in single-page apps to reset move metrics, streak counters, and error budgets.
+- **Ken Regan "Only-Move" Budgeting**: Restricts super-human "only move" execution to calibrated rating envelopes, replacing obscure engine prophylaxis with natural human candidate moves.
+- **Hands-Free Ambient Glance HUD & Audio Chime**: High-contrast peripheral display and subtle audio chime enable zero-touch play without triggering window blur telemetry.
+- **Master Grandmaster Opening Book**: Deep opening repertoire across hundreds of ECO lines (A00–E99) to ensure 0% computer novelty in the early game.
+- **No External Data Transmission**: Runs 100% locally with a strict `self` Content Security Policy.
 
-```bash
-ng serve
-```
+## Build the Extension
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+To build the extension from scratch, use the unified pipeline script:
 
 ```bash
-ng generate --help
+npm run build:extension
 ```
 
-## Building
+This will automatically:
+1. Build the Angular side panel application (`npm run build:ng`)
+2. Bundle the background and content scripts using `esbuild` (`npm run build:scripts`)
+3. Copy the secure `manifest.json` and static assets into the `dist/` folder
 
-To build the project run:
+The complete production-ready extension will be output to the `dist/` directory.
 
-```bash
-ng build
-```
+## Load the Extension in Chrome
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+1. Open Google Chrome and navigate to `chrome://extensions`.
+2. Toggle the **Developer mode** switch in the top right corner.
+3. Click the **Load unpacked** button.
+4. Select the `dist/` directory generated in the previous step.
+5. The extension will appear. Pin it to your toolbar for easy access to the side panel.
 
-## Running unit tests
+## Operational Security Guidelines
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+1. **Keep Move Concealment ON**: Never play moves instantly on complex turns. Wait for the green "Safe to Play" indicator or audio chime.
+2. **Match Your Real Account Rating**: Select an Elo tier that matches your current account rating (800–2300).
+3. **Never Switch Tabs During Active Turns**: Keep the Chrome Side Panel open alongside your chessboard.
+4. **Natural Mouse Movement**: Move your mouse with natural curvature before clicking pieces.

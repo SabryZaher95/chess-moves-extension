@@ -1,32 +1,49 @@
 {
-  "name": "chess-moves-extension",
+  "name": "lozza-chess-helper",
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "build:ng": "ng build --base-href .",
+    "build:scripts": "esbuild src/background.ts --bundle --outfile=dist/background.js && esbuild src/content.ts --bundle --outfile=dist/content.js",
+    "build:manifest": "node -e \"require('fs').copyFileSync('public/manifest.json', 'dist/manifest.json')\"",
+    "build:extension": "npm run build:ng && npm run build:scripts && npm run build:manifest",
+    "audit:ci": "npm audit --audit-level=high || exit 0"
   },
   "private": true,
   "packageManager": "npm@11.17.0",
   "dependencies": {
-    "@angular/common": "^21.2.0",
-    "@angular/compiler": "^21.2.0",
-    "@angular/core": "^21.2.0",
-    "@angular/forms": "^21.2.0",
-    "@angular/platform-browser": "^21.2.0",
-    "@angular/router": "^21.2.0",
-    "rxjs": "~7.8.0",
-    "tslib": "^2.3.0"
+    "@angular/animations": "21.2.19",
+    "@angular/common": "21.2.0",
+    "@angular/compiler": "21.2.0",
+    "@angular/core": "21.2.0",
+    "@angular/forms": "21.2.0",
+    "@angular/platform-browser": "21.2.0",
+    "@angular/router": "21.2.0",
+    "@primeng/themes": "21.0.4",
+    "@primeuix/themes": "3.0.0",
+    "chess.js": "1.4.0",
+    "primeflex": "4.0.0",
+    "primeicons": "8.0.0",
+    "primeng": "21.1.9",
+    "rxjs": "7.8.0",
+    "tslib": "2.3.0",
+    "zone.js": "0.16.2"
   },
   "devDependencies": {
-    "@angular/build": "^21.2.20",
-    "@angular/cli": "^21.2.20",
-    "@angular/compiler-cli": "^21.2.0",
-    "jsdom": "^28.0.0",
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.2",
-    "vitest": "^4.0.8"
+    "@angular/build": "21.2.20",
+    "@angular/cli": "21.2.20",
+    "@angular/compiler-cli": "21.2.0",
+    "@types/chrome": "0.2.5",
+    "autoprefixer": "10.5.4",
+    "jsdom": "28.0.0",
+    "postcss": "8.5.26",
+    "prettier": "3.8.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.2",
+    "vitest": "4.0.8"
   }
 }

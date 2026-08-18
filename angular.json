@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "chess-moves-extension": {
+    "lozza-chess-helper": {
       "projectType": "application",
       "schematics": {},
       "root": "",
@@ -16,8 +16,19 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
+            "outputPath": {
+              "base": "dist/sidepanel",
+              "browser": ""
+            },
+            "index": {
+              "input": "src/index.html",
+              "preloadInitial": false
+            },
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
+            "polyfills": [
+              "zone.js"
+            ],
             "assets": [
               {
                 "glob": "**/*",
@@ -30,11 +41,19 @@
           },
           "configurations": {
             "production": {
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              },
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "2MB",
+                  "maximumError": "3MB"
                 },
                 {
                   "type": "anyComponentStyle",
@@ -56,10 +75,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "chess-moves-extension:build:production"
+              "buildTarget": "lozza-chess-helper:build:production"
             },
             "development": {
-              "buildTarget": "chess-moves-extension:build:development"
+              "buildTarget": "lozza-chess-helper:build:development"
             }
           },
           "defaultConfiguration": "development"

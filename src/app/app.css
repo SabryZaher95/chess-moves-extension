@@ -1,0 +1,36 @@
+/* Premium Stealth Dashboard Styling */
+:host {
+  display: block;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.conceal-blur {
+  filter: blur(10px);
+  user-select: none;
+  pointer-events: none;
+  transition: filter 0.3s ease;
+}
+
+.conceal-overlay {
+  background: rgba(var(--surface-card-rgb, 255, 255, 255), 0.85);
+  backdrop-filter: blur(4px);
+}
+
+.pulse-thinking {
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; transform: scale(0.98); }
+  50% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 0.6; transform: scale(0.98); }
+}
+
+.pacing-glow-safe {
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+}
+
+.pacing-glow-thinking {
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.4);
+}
