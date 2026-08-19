@@ -1,32 +1,59 @@
-import { Chess } from 'chess.js';
-
 /**
  * Pure 100% Class-Only Isolated-World Chess Board Reader
  *
- * Technical Stealth & Anti-Cheat Invisibility:
- * - ZERO Main-World Script Injection: Absolutely NO <script> tags, eval, or window modifications
+ * Technical Stealth & Zero-Injection Architecture:
+ * - ZERO Main-World Script Injection: No <script> tags, eval, or window object modifications
  * - ZERO DOM Mutation / Pollution: Never creates elements, overlays, styles, or attributes in the page DOM
- * - Purely passive class reader: Only reads standard CSS class names (.piece, .square-XY, .flipped, .highlight)
- * - Move list synchronization: Extracts SAN move history if available, validated via chess.js
- * - Zero Global Observers: MutationObserver is attached strictly to the board element only (no document.body observation)
- * - High-Precision Turn Detection: Uses highlight classes and piece placement to guarantee accurate side-to-move detection
+ * - Purely passive class reader: Reads strictly standard CSS class names (.piece, .square-XY, .flipped, .highlight)
+ * - Zero Layout Reflows: Never calls getBoundingClientRect() or computed styles
+ * - Zero Global Observers: MutationObserver is attached strictly to the board element with attributeFilter: ['class']
+ * - Deterministic FEN generation: Constructs full FEN with piece positions, side to move, castling rights, and en-passant
+ *
+ * Anti-Detection Hardening:
+ * - Re-injection guard: prevents duplicate instances via isolated-world marker
+ * - Randomized startup delay (1.5–4.5s) to break timing correlation with extension click
+ * - Jittered debounce (35–80ms) to prevent timing fingerprinting
+ * - Randomized board polling interval (350–600ms) to avoid pattern detection
+ * - Idle-aware observer attachment via requestIdleCallback
+ * - Obfuscated message keys to prevent interception analysis
  */
 
 (() => {
-  initClassOnlyBoardReader();
+  // ── Re-injection guard (isolated world only) ───────────────────────────
+  const GUARD_KEY = '__qn_session';
+  if ((window as any)[GUARD_KEY]) return;
+  (window as any)[GUARD_KEY] = true;
+
+  // ── Randomized startup delay ───────────────────────────────────────────
+  const startupDelay = 1500 + Math.random() * 3000; // 1.5–4.5 seconds
+
+  const scheduleStart = () => {
+    setTimeout(() => initPureClassBoardReader(), startupDelay);
+  };
+
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => scheduleStart(), { timeout: 5000 });
+  } else {
+    scheduleStart();
+  }
 })();
 
-function initClassOnlyBoardReader() {
-  let lastEmittedStateKey = '';
+function initPureClassBoardReader() {
+  let lastEmittedFen = '';
   let observerAttached = false;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Returns a jittered debounce interval (35–80ms) */
+  function jitteredDebounce(): number {
+    return 35 + Math.random() * 45;
+  }
 
   function isLichess(): boolean {
     return window.location.hostname.includes('lichess.org');
   }
 
   /**
-   * Locates the chessboard container element strictly without mutating the DOM.
+   * Locates the chessboard container element purely by tag or selector without mutating the DOM.
    */
   function findBoardElement(): Element | null {
     if (isLichess()) {
@@ -54,13 +81,13 @@ function initClassOnlyBoardReader() {
       const found = document.querySelectorAll(boardSelectors[i]);
       for (let j = 0; j < found.length; j++) {
         const el = found[j];
-        if (el.getElementsByClassName('piece').length > 0 || el.querySelector('.piece')) {
+        if (el.getElementsByClassName('piece').length > 0) {
           return el;
         }
       }
     }
 
-    // Fallback: locate element via piece class
+    // Fallback: locate container via piece class
     const pieces = document.getElementsByClassName('piece');
     if (pieces.length > 0) {
       const p = pieces[0];
@@ -71,7 +98,7 @@ function initClassOnlyBoardReader() {
   }
 
   /**
-   * Detects board orientation (White vs Black player perspective) purely from CSS classes.
+   * Detects board orientation (White vs Black perspective) purely from CSS class names.
    */
   function detectOrientation(boardEl: Element): 'w' | 'b' {
     if (isLichess()) {
@@ -86,87 +113,27 @@ function initClassOnlyBoardReader() {
     const isFlipped = (
       boardEl.classList.contains('flipped') ||
       boardEl.closest('.flipped') !== null ||
-      document.querySelector('.flipped, wc-chess-board.flipped, chess-board.flipped, #board-layout-main.flipped, .board-layout-main.flipped') !== null
+      document.querySelector('.flipped, wc-chess-board.flipped, chess-board.flipped, #board-layout-main.flipped') !== null
     );
 
     return isFlipped ? 'b' : 'w';
   }
 
   /**
-   * Extracts SAN moves from the game's move list in the DOM if present.
+   * Converts file (0..7) and rank (0..7) indices into algebraic square notation (e.g. e4, g8).
+   * Note: rankIndex 0 is rank 8, rankIndex 7 is rank 1.
    */
-  function extractMoveList(): string[] {
-    const moves: string[] = [];
-
-    if (isLichess()) {
-      const moveElements = document.querySelectorAll('l4x u8t, .rmoves u8t, kwdb u8t');
-      for (let i = 0; i < moveElements.length; i++) {
-        const txt = moveElements[i].textContent?.trim() || '';
-        if (txt && !txt.includes('...') && !/^\d+\.?$/.test(txt)) {
-          moves.push(txt);
-        }
-      }
-      return moves;
-    }
-
-    // Chess.com move list nodes
-    const moveNodes = document.querySelectorAll(
-      'wc-move-list .node:not(.node-highlight-gray), .vertical-move-list-component .node, .move-list-move span.node, div.node[data-node], .move-node-component, .move-list-row .move-item, div.move-text, .move-list-rail .node'
-    );
-
-    if (moveNodes.length > 0) {
-      for (let i = 0; i < moveNodes.length; i++) {
-        const el = moveNodes[i];
-
-        // Extract figurine letter if present
-        let figurine = '';
-        const figEl = el.querySelector('[data-figurine], [class*="chess-"], .icon-font-chess');
-        if (figEl) {
-          const dataFig = figEl.getAttribute('data-figurine');
-          if (dataFig) {
-            figurine = dataFig;
-          } else {
-            const cls = figEl.className || '';
-            if (cls.includes('knight')) figurine = 'N';
-            else if (cls.includes('bishop')) figurine = 'B';
-            else if (cls.includes('rook')) figurine = 'R';
-            else if (cls.includes('queen')) figurine = 'Q';
-            else if (cls.includes('king')) figurine = 'K';
-          }
-        }
-
-        let txt = (el.textContent || '').trim();
-        if (figurine && !txt.startsWith(figurine) && !txt.startsWith('O-O') && !txt.startsWith('0-0')) {
-          txt = figurine + txt;
-        }
-
-        txt = txt.replace(/^\d+\.+/, '').trim();
-        if (txt && !/^\d+\.?$/.test(txt) && !txt.includes('\u00BD') && !txt.includes('1-0') && !txt.includes('0-1') && txt !== '*') {
-          moves.push(txt);
-        }
-      }
-      return moves;
-    }
-
-    // Fallback: standard move-list rows
-    const moveRows = document.querySelectorAll('.move-list-move');
-    for (let i = 0; i < moveRows.length; i++) {
-      const spans = moveRows[i].querySelectorAll('span');
-      spans.forEach(s => {
-        const txt = (s.textContent || '').trim().replace(/^\d+\.+/, '').trim();
-        if (txt && !/^\d+\.?$/.test(txt) && !txt.includes('1-0') && !txt.includes('0-1')) {
-          moves.push(txt);
-        }
-      });
-    }
-
-    return moves;
+  function indicesToAlgebraic(fileIdx: number, rankIdx: number): string {
+    const fileChar = String.fromCharCode('a'.charCodeAt(0) + fileIdx);
+    const rankNum = 8 - rankIdx;
+    return `${fileChar}${rankNum}`;
   }
 
   /**
    * Reads board state and constructs accurate FEN purely from piece CSS classes and highlight classes.
+   * NO move-list DOM queries, NO getBoundingClientRect reflows, NO main-world script injection.
    */
-  function readBoardState(): { fen: string; myColor: 'w' | 'b'; sideToMove: 'w' | 'b'; sanMoves: string[] } | null {
+  function readBoardState(): { fen: string; myColor: 'w' | 'b'; sideToMove: 'w' | 'b' } | null {
     const boardEl = findBoardElement();
     if (!boardEl) return null;
 
@@ -174,14 +141,12 @@ function initClassOnlyBoardReader() {
     const flipped = (myColor === 'b');
     const grid: (string | null)[][] = Array(8).fill(null).map(() => Array(8).fill(null));
 
-    // Track highlight squares to determine the last move and side to move
-    const highlightSquares: { file: number; rank: number }[] = [];
+    // Track highlighted squares (source and destination of the last move)
+    const highlightSquares: { file: number; rank: number; algebraic: string }[] = [];
 
     if (isLichess()) {
-      // Lichess piece parsing via class name & translate styles
-      const boardRect = boardEl.getBoundingClientRect();
+      // Lichess piece parsing via class names
       const pieces = boardEl.getElementsByTagName('piece');
-
       for (let i = 0; i < pieces.length; i++) {
         const el = pieces[i] as HTMLElement;
         const cn = el.className;
@@ -195,34 +160,53 @@ function initClassOnlyBoardReader() {
         else if (cn.includes('king')) type = 'k';
 
         if (!color || !type) continue;
-        const ch = color === 'w' ? type.toUpperCase() : type;
+        const pieceChar = color === 'w' ? type.toUpperCase() : type;
 
-        const tf = el.style.transform;
-        const tm = tf.match(/translate\((\d+(?:\.\d+)?)px,\s*(\d+(?:\.\d+)?)px\)/);
-        if (tm && boardRect.width > 0) {
-          const sqW = boardRect.width / 8;
-          const sqH = boardRect.height / 8;
-          let x = Math.round(parseFloat(tm[1]) / sqW);
-          let y = Math.round(parseFloat(tm[2]) / sqH);
+        // Parse transform percentage or px without getBoundingClientRect
+        const tf = el.style.transform || '';
+        const tm = tf.match(/translate\((\d+(?:\.\d+)?)px,\s*(\d+(?:\.\d+)?)px\)/) ||
+          tf.match(/translate\((\d+(?:\.\d+)?)%,\s*(\d+(?:\.\d+)?)%\)/);
+
+        if (tm) {
+          const val1 = parseFloat(tm[1]);
+          const val2 = parseFloat(tm[2]);
+          // Standard 100% or 8-unit relative translation
+          let x = tf.includes('%') ? Math.round(val1 / 100) : -1;
+          let y = tf.includes('%') ? Math.round(val2 / 100) : -1;
+
+          if (x >= 0 && x < 8 && y >= 0 && y < 8) {
+            if (flipped) { x = 7 - x; y = 7 - y; }
+            grid[y][x] = pieceChar;
+          }
+        }
+      }
+
+      // Lichess last-move highlight squares
+      const lastMoveEls = boardEl.getElementsByClassName('last-move');
+      for (let i = 0; i < lastMoveEls.length; i++) {
+        const el = lastMoveEls[i] as HTMLElement;
+        const tf = el.style.transform || '';
+        const tm = tf.match(/translate\((\d+(?:\.\d+)?)%,\s*(\d+(?:\.\d+)?)%\)/);
+        if (tm) {
+          let x = Math.round(parseFloat(tm[1]) / 100);
+          let y = Math.round(parseFloat(tm[2]) / 100);
           if (flipped) { x = 7 - x; y = 7 - y; }
           if (x >= 0 && x < 8 && y >= 0 && y < 8) {
-            grid[y][x] = ch;
+            highlightSquares.push({ file: x, rank: y, algebraic: indicesToAlgebraic(x, y) });
           }
         }
       }
     } else {
-      // Chess.com piece parsing purely from class names:
-      // Piece type/color: .piece.wp, .piece.bn, etc.
-      // Square coordinates: .square-12, .square-58, etc.
-      const pieces = boardEl.getElementsByClassName('piece').length > 0
-        ? boardEl.getElementsByClassName('piece')
-        : document.getElementsByClassName('piece');
+      // Chess.com piece parsing strictly from class names:
+      // Piece class: .piece.wp, .piece.bn, etc.
+      // Coordinate class: .square-12, .square-58, etc. (1st digit: file 1..8, 2nd digit: rank 1..8)
+      const pieces = boardEl.getElementsByClassName('piece');
 
       for (let i = 0; i < pieces.length; i++) {
         const el = pieces[i] as HTMLElement;
         const cn = el.className;
 
-        // Skip ghost/dragging artifacts
+        // Skip dragging duplicates if present
         if (cn.includes('dragging') && pieces.length > 32) continue;
 
         const pieceMatch = cn.match(/\b([wb])([pnbrqk])\b/);
@@ -232,40 +216,31 @@ function initClassOnlyBoardReader() {
         const type = pieceMatch[2];
         const pieceChar = color === 'w' ? type.toUpperCase() : type;
 
-        let fileIdx = -1; // 0..7 (a..h)
-        let rankIdx = -1; // 0..7 (8..1)
-
         const squareMatch = cn.match(/\bsquare-(\d)(\d)\b/);
         if (squareMatch) {
-          fileIdx = parseInt(squareMatch[1], 10) - 1;
-          rankIdx = 8 - parseInt(squareMatch[2], 10);
-        } else {
-          // Fallback to CSS transform percentages if class square is missing
-          const tf = el.style.transform;
-          const tm = tf.match(/translate\((\d+(?:\.\d+)?)%?,\s*(\d+(?:\.\d+)?)%?\)/);
-          if (tm) {
-            let x = Math.round(parseFloat(tm[1]) / 100);
-            let y = Math.round(parseFloat(tm[2]) / 100);
-            if (flipped) { x = 7 - x; y = 7 - y; }
-            fileIdx = x;
-            rankIdx = y;
-          }
-        }
+          const fileIdx = parseInt(squareMatch[1], 10) - 1; // 0..7 (a..h)
+          const rankIdx = 8 - parseInt(squareMatch[2], 10); // 0..7 (8..1)
 
-        if (fileIdx >= 0 && fileIdx < 8 && rankIdx >= 0 && rankIdx < 8) {
-          grid[rankIdx][fileIdx] = pieceChar;
+          if (fileIdx >= 0 && fileIdx < 8 && rankIdx >= 0 && rankIdx < 8) {
+            grid[rankIdx][fileIdx] = pieceChar;
+          }
         }
       }
 
-      // Read highlight classes to detect the last moved square
+      // Read highlight classes to detect the last moved square (.highlight.square-XY)
       const highlightEls = boardEl.querySelectorAll('.highlight[class*="square-"]');
       for (let i = 0; i < highlightEls.length; i++) {
         const hMatch = highlightEls[i].className.match(/\bsquare-(\d)(\d)\b/);
         if (hMatch) {
-          highlightSquares.push({
-            file: parseInt(hMatch[1], 10) - 1,
-            rank: 8 - parseInt(hMatch[2], 10)
-          });
+          const fileIdx = parseInt(hMatch[1], 10) - 1;
+          const rankIdx = 8 - parseInt(hMatch[2], 10);
+          if (fileIdx >= 0 && fileIdx < 8 && rankIdx >= 0 && rankIdx < 8) {
+            highlightSquares.push({
+              file: fileIdx,
+              rank: rankIdx,
+              algebraic: indicesToAlgebraic(fileIdx, rankIdx)
+            });
+          }
         }
       }
     }
@@ -289,31 +264,45 @@ function initClassOnlyBoardReader() {
       if (r < 7) placement += '/';
     }
 
-    // Empty board check
+    // Empty or invalid board check
     if (placement === '8/8/8/8/8/8/8/8' || totalPieces === 0) return null;
 
-    const sanMoves = extractMoveList();
-
-    // Detect side to move:
+    // Detect side to move from highlight squares:
+    // One highlight square is the source (empty) and one is the destination (contains the moved piece)
     let sideToMove: 'w' | 'b' = 'w';
-    let turnDetected = false;
+    let enPassantSquare = '-';
 
-    if (sanMoves.length > 0) {
-      sideToMove = (sanMoves.length % 2 === 0) ? 'w' : 'b';
-      turnDetected = true;
-    } else if (highlightSquares.length >= 2) {
+    if (highlightSquares.length >= 2) {
+      let lastMovedPiece: string | null = null;
+      let destSq: { file: number; rank: number; algebraic: string } | null = null;
+      let srcSq: { file: number; rank: number; algebraic: string } | null = null;
+
       for (const sq of highlightSquares) {
         const pieceOnSq = grid[sq.rank][sq.file];
         if (pieceOnSq) {
-          const isWhitePiece = (pieceOnSq === pieceOnSq.toUpperCase());
-          sideToMove = isWhitePiece ? 'b' : 'w';
-          turnDetected = true;
-          break;
+          lastMovedPiece = pieceOnSq;
+          destSq = sq;
+        } else {
+          srcSq = sq;
         }
       }
-    }
 
-    if (!turnDetected) {
+      if (lastMovedPiece && destSq) {
+        const isWhite = (lastMovedPiece === lastMovedPiece.toUpperCase());
+        // If White moved last, it is Black's turn to move. If Black moved last, it is White's turn.
+        sideToMove = isWhite ? 'b' : 'w';
+
+        // Detect 2-square pawn push for en-passant square calculation
+        if (srcSq && (lastMovedPiece === 'P' || lastMovedPiece === 'p')) {
+          const rankDiff = Math.abs(destSq.rank - srcSq.rank);
+          if (rankDiff === 2 && destSq.file === srcSq.file) {
+            const epRank = (destSq.rank + srcSq.rank) / 2;
+            enPassantSquare = indicesToAlgebraic(destSq.file, epRank);
+          }
+        }
+      }
+    } else {
+      // If no highlight squares exist (start of a new game), it is White's turn
       sideToMove = 'w';
     }
 
@@ -329,87 +318,75 @@ function initClassOnlyBoardReader() {
     }
     if (castling === '') castling = '-';
 
-    let finalFen = `${placement} ${sideToMove} ${castling} - 0 1`;
+    const finalFen = `${placement} ${sideToMove} ${castling} ${enPassantSquare} 0 1`;
 
-    // If move list is clean, replay with chess.js for exact FEN (with en passant and exact clocks)
-    if (sanMoves.length > 0) {
-      try {
-        const replay = new Chess();
-        for (const m of sanMoves) {
-          replay.move(m);
-        }
-        finalFen = replay.fen();
-        sideToMove = replay.turn();
-      } catch (_) {
-        // Fallback to visual FEN
-      }
-    }
-
-    return { fen: finalFen, myColor, sideToMove, sanMoves };
+    return { fen: finalFen, myColor, sideToMove };
   }
 
   /**
-   * Emits position update to the side panel if the state has changed.
+   * Emits position update to the side panel if the FEN has changed.
+   * Uses obfuscated message keys.
    */
   function emitUpdate() {
     const state = readBoardState();
     if (!state) return;
 
-    const stateKey = `${state.fen}|${state.myColor}|${state.sideToMove}|${state.sanMoves.length}`;
-    if (stateKey === lastEmittedStateKey) return;
-    lastEmittedStateKey = stateKey;
+    if (state.fen === lastEmittedFen) return;
+    lastEmittedFen = state.fen;
 
     try {
       chrome.runtime.sendMessage({
-        type: 'POSITION_UPDATE',
-        fen: state.fen,
-        sanMoves: state.sanMoves,
-        sideToMove: state.sideToMove,
-        myColor: state.myColor
+        type: 'pu',
+        f: state.fen,
+        s: state.sideToMove,
+        c: state.myColor
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function debouncedEmit() {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(emitUpdate, 80);
+    debounceTimer = setTimeout(emitUpdate, jitteredDebounce());
   }
 
   /**
-   * Attaches MutationObserver ONLY to the chessboard element.
+   * Attaches MutationObserver strictly to the chessboard element.
+   * Only listens to class changes and childList mutations (zero document.body / style observation).
+   * Uses requestIdleCallback for idle-aware attachment.
    */
   function attachBoardObserver() {
     const boardEl = findBoardElement();
     if (!boardEl || observerAttached) return;
 
-    const observer = new MutationObserver(() => {
-      debouncedEmit();
-    });
+    const doAttach = () => {
+      if (observerAttached) return;
 
-    observer.observe(boardEl, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class', 'style', 'transform']
-    });
+      const observer = new MutationObserver(() => {
+        debouncedEmit();
+      });
 
-    const moveList = document.querySelector(
-      'wc-move-list, .vertical-move-list-component, l4x, .rmoves, .move-list-container'
-    );
-    if (moveList) {
-      observer.observe(moveList, {
+      observer.observe(boardEl, {
         childList: true,
         subtree: true,
-        characterData: true
+        attributes: true,
+        attributeFilter: ['class']
       });
-    }
 
-    observerAttached = true;
-    emitUpdate();
+      observerAttached = true;
+      emitUpdate();
+    };
+
+    // Attach during idle time to avoid synchronous timing correlation
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => doAttach(), { timeout: 2000 });
+    } else {
+      setTimeout(doAttach, 100 + Math.random() * 200);
+    }
   }
 
   /**
    * Lightweight startup listener waiting for chessboard element.
+   * Uses randomized polling interval to avoid pattern detection.
    */
   function waitForBoard() {
     const board = findBoardElement();
@@ -419,27 +396,33 @@ function initClassOnlyBoardReader() {
     }
 
     let checkAttempts = 0;
-    const interval = setInterval(() => {
+    const maxAttempts = 25 + Math.floor(Math.random() * 15); // 25–40 attempts
+
+    const scheduleNext = () => {
       checkAttempts++;
-      const b = findBoardElement();
-      if (b) {
-        clearInterval(interval);
-        attachBoardObserver();
-      } else if (checkAttempts > 30) {
-        clearInterval(interval);
-      }
-    }, 500);
+      const jitteredInterval = 350 + Math.random() * 250; // 350–600ms
+      setTimeout(() => {
+        const b = findBoardElement();
+        if (b) {
+          attachBoardObserver();
+        } else if (checkAttempts < maxAttempts) {
+          scheduleNext();
+        }
+      }, jitteredInterval);
+    };
+
+    scheduleNext();
   }
 
-  // Handle explicit refresh requests from side panel
+  // Handle explicit refresh requests from the extension side panel (obfuscated key)
   try {
     chrome.runtime.onMessage.addListener((message, sender) => {
       if (sender.id !== chrome.runtime.id) return;
-      if (message && message.type === 'REQUEST_POSITION') {
+      if (message && message.type === 'rp') {
         emitUpdate();
       }
     });
-  } catch (_) {}
+  } catch (_) { }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', waitForBoard);
@@ -447,3 +430,4 @@ function initClassOnlyBoardReader() {
     waitForBoard();
   }
 }
+

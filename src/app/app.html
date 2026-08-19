@@ -21,7 +21,7 @@
         [icon]="gameState.audioCueEnabled() ? 'pi pi-volume-up' : 'pi pi-volume-off'" 
         [class]="gameState.audioCueEnabled() ? 'p-button-rounded p-button-text p-button-sm p-button-success' : 'p-button-rounded p-button-text p-button-sm p-button-secondary'" 
         (click)="toggleAudioCue()" 
-        [pTooltip]="gameState.audioCueEnabled() ? 'Audio Cue: ON (Hands-free chime when safe)' : 'Audio Cue: OFF'" 
+        [pTooltip]="gameState.audioCueEnabled() ? 'Audio Cue: ON (Chimes when think time elapsed)' : 'Audio Cue: OFF'" 
         tooltipPosition="bottom">
       </button>
       <button 
@@ -30,7 +30,7 @@
         [icon]="gameState.autoConcealMove() ? 'pi pi-eye-slash' : 'pi pi-eye'" 
         [class]="gameState.autoConcealMove() ? 'p-button-rounded p-button-text p-button-sm p-button-success' : 'p-button-rounded p-button-text p-button-sm p-button-secondary'" 
         (click)="toggleConcealment()" 
-        [pTooltip]="gameState.autoConcealMove() ? 'Move Concealment: ON (Hides move until safe)' : 'Move Concealment: OFF (Instant display)'" 
+        [pTooltip]="gameState.autoConcealMove() ? 'Move Concealment: ON (Hides move until timer)' : 'Move Concealment: OFF (Instant display)'" 
         tooltipPosition="bottom">
       </button>
       <button 
@@ -57,9 +57,8 @@
   <ng-container *ngIf="gameState.compactHudMode()">
     <div class="surface-card p-3 border-round shadow-2 border-1 surface-border flex flex-column gap-3">
       <div class="flex justify-content-between align-items-center">
-        <span class="text-xs font-semibold text-color-secondary uppercase tracking-wider">Move Suggestion</span>
+        <span class="text-xs font-semibold text-color-secondary uppercase tracking-wider">Best Move</span>
         <div class="flex align-items-center gap-2">
-          <p-tag [value]="getPacingLabel(gameState.pacingCategory())" [severity]="getPacingSeverity(gameState.pacingCategory())" styleClass="text-xs"></p-tag>
           <p-tag *ngIf="gameState.currentOpening()" [value]="gameState.currentOpening()?.eco" severity="info" styleClass="text-xs"></p-tag>
           <span *ngIf="gameState.myClockSec() !== null" class="text-xs font-mono text-color-secondary">
             ⏱️ {{ formatClock(gameState.myClockSec()) }}
@@ -67,13 +66,13 @@
         </div>
       </div>
 
-      <!-- Concealed / Revealed Move Display in HUD -->
+      <!-- Move Display in HUD -->
       <div *ngIf="gameState.selectedMove(); let move" class="flex flex-column gap-1 relative overflow-hidden">
         <!-- Masked state when concealment active & not yet safe -->
         <div *ngIf="gameState.autoConcealMove() && !gameState.isMoveRevealed()" class="flex flex-column align-items-center justify-content-center py-3 gap-2">
           <div class="flex align-items-center gap-2 text-orange-500 font-bold text-lg pulse-thinking">
             <i class="pi pi-hourglass text-lg"></i>
-            <span>Wait {{ gameState.remainingDelaySec() }}s ({{ getPacingLabel(gameState.pacingCategory()) }})</span>
+            <span>Wait {{ gameState.remainingDelaySec() }}s</span>
           </div>
           <button pButton type="button" label="Reveal Early" icon="pi pi-eye" class="p-button-text p-button-sm text-xs py-1" (click)="revealMoveNow()"></button>
         </div>
@@ -102,9 +101,9 @@
       <div *ngIf="gameState.currentFen() && gameState.selectedMove()" class="flex flex-column gap-1">
         <div class="flex justify-content-between text-xs">
           <span [ngClass]="gameState.isPacingSafe() ? 'text-green-600 font-bold' : 'text-orange-500 font-medium'">
-            {{ gameState.isPacingSafe() ? 'SAFE TO PLAY' : 'WAIT ' + gameState.remainingDelaySec() + 's' }}
+            {{ gameState.isPacingSafe() ? 'READY' : 'PACE ' + gameState.remainingDelaySec() + 's' }}
           </span>
-          <span class="text-color-secondary">{{ gameState.suggestedDelaySec() }}s total</span>
+          <span class="text-color-secondary">{{ gameState.suggestedDelaySec() }}s recommended</span>
         </div>
         <div class="w-full surface-200 border-round overflow-hidden" style="height: 6px;">
           <div 
@@ -120,20 +119,11 @@
   <!-- FULL DASHBOARD VIEW -->
   <ng-container *ngIf="!gameState.compactHudMode()">
     
-    <!-- High Ban Risk Warning if Max 3000+ is selected -->
-    <div *ngIf="gameState.selectedElo() === 'max'" class="p-2 border-round bg-red-50 border-1 border-red-300 text-red-700 flex align-items-start gap-2 text-xs">
-      <i class="pi pi-exclamation-triangle text-base text-red-600 mt-1"></i>
-      <div class="flex flex-column gap-1">
-        <strong>FairPlay High Risk Notice:</strong>
-        <span>Playing 100% pure engine moves (99%+ CAPS) triggers automated Chess.com FairPlay suspensions. Select an Elo rating tier matching your account (e.g., 1400 / 1700) for ban-free calibrated play.</span>
-      </div>
-    </div>
-
-    <!-- Target Rating & Engine Configuration -->
+    <!-- Engine Configuration & Strength -->
     <div class="flex flex-column gap-2 surface-card p-3 border-round shadow-1 border-1 surface-border">
       <div class="flex flex-column gap-1">
         <label for="eloProfile" class="text-xs font-semibold text-color-secondary uppercase tracking-wider">
-          Target Elo (Deterministic Anti-CAPS Guard)
+          Engine Strength & Accuracy
         </label>
         <p-select 
           id="eloProfile"
@@ -148,7 +138,7 @@
       <div class="flex gap-2">
         <div class="flex-1 flex flex-column gap-1">
           <label for="searchTime" class="text-xs font-semibold text-color-secondary uppercase tracking-wider">
-            Engine Base Speed
+            Calculation Depth / Speed
           </label>
           <p-select 
             id="searchTime"
@@ -165,52 +155,25 @@
         <div class="flex align-items-center gap-2">
           <p-checkbox [(ngModel)]="gameState.autoConcealMove" [binary]="true" inputId="autoConceal"></p-checkbox>
           <label for="autoConceal" class="text-xs font-medium text-color-secondary cursor-pointer">
-            <strong>Move Concealment:</strong> Hide move until natural human think time elapses
-          </label>
-        </div>
-        <div class="flex align-items-center gap-2">
-          <p-checkbox [(ngModel)]="gameState.humanMode" [binary]="true" inputId="humanMode"></p-checkbox>
-          <label for="humanMode" class="text-xs font-medium text-color-secondary cursor-pointer">
-            Human Calibration (Trimodal pacing & Ken Regan only-move budget)
+            <strong>Move Concealment:</strong> Hide move text until pacing countdown finishes
           </label>
         </div>
         <div class="flex align-items-center gap-2">
           <p-checkbox [(ngModel)]="gameState.audioCueEnabled" [binary]="true" inputId="audioCue"></p-checkbox>
           <label for="audioCue" class="text-xs font-medium text-color-secondary cursor-pointer">
-            Hands-Free Audio Cue (Chimes when move is safe to play)
+            Hands-Free Audio Chime (Plays when natural delay elapses)
           </label>
         </div>
       </div>
     </div>
 
-    <!-- Live In-Game Anti-Cheat Telemetry Monitor -->
-    <div class="surface-card p-2 border-round shadow-1 border-1 surface-border flex flex-column gap-1 text-xs">
-      <div class="flex align-items-center justify-content-between gap-2">
-        <div class="flex align-items-center gap-1">
-          <i class="pi pi-chart-line text-xs text-primary"></i>
-          <span class="font-semibold text-color-secondary">Est. Accuracy:</span>
-          <span class="font-bold" [ngClass]="{'text-green-600': gameState.estimatedAccuracy() <= currentProfile.targetAccuracyMax, 'text-orange-500': gameState.estimatedAccuracy() > currentProfile.targetAccuracyMax}">
-            {{ gameState.estimatedAccuracy() }}% CAPS
-          </span>
-          <span class="text-color-secondary">({{ gameState.runningAcpl() }} ACPL)</span>
-        </div>
-        <div class="flex align-items-center gap-1">
-          <span class="font-semibold text-color-secondary">T1 Streak:</span>
-          <span class="font-bold" [ngClass]="{'text-orange-500': gameState.consecutiveT1Count() >= currentProfile.maxT1Streak}">
-            {{ gameState.consecutiveT1Count() }}/{{ currentProfile.maxT1Streak }}
-          </span>
-        </div>
+    <!-- Live Stealth & Invisibility Status Banner -->
+    <div class="surface-card p-2 border-round shadow-1 border-1 surface-border flex align-items-center justify-content-between text-xs">
+      <div class="flex align-items-center gap-2">
+        <i class="pi pi-shield text-green-500 text-sm"></i>
+        <span class="font-semibold text-color">Pure Class-Only Reader</span>
       </div>
-
-      <div class="flex align-items-center justify-content-between gap-2 pt-1 border-top-1 surface-border">
-        <div class="flex align-items-center gap-1">
-          <span class="font-semibold text-color-secondary">Only Moves:</span>
-          <span class="font-bold" [ngClass]="{'text-orange-500': gameState.onlyMovesPlayed() >= gameState.maxOnlyMoves()}">
-            {{ gameState.onlyMovesPlayed() }}/{{ gameState.maxOnlyMoves() }}
-          </span>
-        </div>
-        <p-tag value="100% Isolated Purity" severity="success" styleClass="text-xs px-2 py-0" pTooltip="Zero main-world script injection, pure isolated DOM reads"></p-tag>
-      </div>
+      <p-tag value="0% DOM Injection" severity="success" styleClass="text-xs px-2 py-0" pTooltip="Zero script tags, zero DOM mutations, 100% isolated-world class parsing"></p-tag>
     </div>
 
     <!-- Opening Book Banner (When in Opening Book) -->
@@ -221,26 +184,25 @@
           <span class="font-bold text-xs text-color text-overflow-ellipsis overflow-hidden white-space-nowrap">
             {{ opening.eco }}: {{ opening.name }}
           </span>
-          <span class="text-xs text-color-secondary opacity-80">Master Grandmaster Repertoire (0% Engine Novelty)</span>
+          <span class="text-xs text-color-secondary opacity-80">Grandmaster Opening Repertoire</span>
         </div>
       </div>
-      <p-tag value="Book" severity="info" styleClass="text-xs px-2 py-0"></p-tag>
+      <p-tag value="Book Move" severity="info" styleClass="text-xs px-2 py-0"></p-tag>
     </div>
 
-    <!-- Move Pacing Guider & Clock Sync -->
-    <div *ngIf="gameState.currentFen() && gameState.selectedMove() && gameState.humanMode() && gameState.selectedElo() !== 'max'" class="p-2 surface-card border-round shadow-1 border-1 surface-border flex flex-column gap-2">
+    <!-- Move Pacing Guider (Clock & Think Time Advice) -->
+    <div *ngIf="gameState.currentFen() && gameState.selectedMove()" class="p-2 surface-card border-round shadow-1 border-1 surface-border flex flex-column gap-2">
       <div class="flex justify-content-between align-items-center">
         <div class="flex align-items-center gap-2">
           <span class="text-xs font-semibold text-color-secondary flex align-items-center gap-1">
-            <i class="pi pi-stopwatch text-xs"></i> Move Pacing Guider
+            <i class="pi pi-stopwatch text-xs"></i> Human Pacing Guide
           </span>
-          <p-tag [value]="getPacingLabel(gameState.pacingCategory())" [severity]="getPacingSeverity(gameState.pacingCategory())" styleClass="text-xs px-2 py-0"></p-tag>
           <span *ngIf="gameState.myClockSec() !== null" class="text-xs font-mono font-bold text-primary bg-primary-50 px-1 border-round">
             ⏱️ {{ formatClock(gameState.myClockSec()) }}
           </span>
         </div>
         <p-tag 
-          [value]="gameState.isPacingSafe() ? 'Safe to Play' : 'Thinking (' + gameState.remainingDelaySec() + 's)'" 
+          [value]="gameState.isPacingSafe() ? 'Safe to Move' : 'Pacing (' + gameState.remainingDelaySec() + 's)'" 
           [severity]="gameState.isPacingSafe() ? 'success' : 'warn'"
           styleClass="text-xs px-2 py-0">
         </p-tag>
@@ -254,14 +216,14 @@
         </div>
       </div>
       <div class="flex justify-content-between text-xs text-color-secondary opacity-80">
-        <span>Target think: {{ gameState.suggestedDelaySec() }}s ({{ getPacingLabel(gameState.pacingCategory()) }})</span>
-        <span *ngIf="!gameState.isPacingSafe()" class="text-orange-500 font-medium">Wait for timer / chime before playing</span>
-        <span *ngIf="gameState.isPacingSafe()" class="text-green-600 font-bold">Natural delay reached</span>
+        <span>Suggested delay: {{ gameState.suggestedDelaySec() }}s ({{ getPacingLabel(gameState.pacingCategory()) }})</span>
+        <span *ngIf="!gameState.isPacingSafe()" class="text-orange-500 font-medium">Wait for chime / bar before clicking</span>
+        <span *ngIf="gameState.isPacingSafe()" class="text-green-600 font-bold">Natural timing reached</span>
       </div>
     </div>
 
-    <!-- Main Section: Selected Move -->
-    <p-card header="Recommended Move" styleClass="flex-1 shadow-2">
+    <!-- Main Section: Best Tactical Move -->
+    <p-card header="Best Tactical Move" styleClass="flex-1 shadow-2">
       <!-- Searching Skeleton -->
       <ng-container *ngIf="gameState.isSearching()">
         <div class="flex flex-column gap-3 py-2">
@@ -270,17 +232,14 @@
         </div>
       </ng-container>
 
-      <!-- Selected Move Presentation with Concealment Support -->
+      <!-- Selected Move Presentation -->
       <ng-container *ngIf="!gameState.isSearching() && gameState.selectedMove(); let move">
         
-        <!-- Concealed Mask State -->
+        <!-- Concealed Mask State (if user enabled autoConcealMove) -->
         <div *ngIf="gameState.autoConcealMove() && !gameState.isMoveRevealed()" class="flex flex-column align-items-center justify-content-center py-4 gap-2 border-round surface-100 border-1 border-dashed surface-border">
           <i class="pi pi-hourglass text-3xl text-orange-500 pulse-thinking"></i>
           <span class="text-lg font-bold text-orange-500">
             Simulating Human Think Time ({{ gameState.remainingDelaySec() }}s)
-          </span>
-          <span class="text-xs text-color-secondary text-center max-w-20rem">
-            Move is concealed to protect your account against instant-play telemetry flags.
           </span>
           <button 
             pButton 
@@ -292,30 +251,30 @@
           </button>
         </div>
 
-        <!-- Revealed Move Details -->
+        <!-- Revealed Best Move Details -->
         <div *ngIf="!gameState.autoConcealMove() || gameState.isMoveRevealed()">
           <div class="flex align-items-center justify-content-between gap-3 mb-2 mt-1">
             <div class="flex align-items-baseline gap-2">
-              <span class="text-6xl font-extrabold text-color">{{ move.san }}</span>
+              <span class="text-6xl font-extrabold text-primary">{{ move.san }}</span>
               <span *ngIf="move.fromSquare && move.toSquare" class="text-lg font-mono font-bold text-color-secondary">
                 ({{ move.fromSquare }} → {{ move.toSquare }})
               </span>
             </div>
-            <p-tag [value]="move.humanScore || 'N/A'" styleClass="text-xl px-3 py-2 font-bold" severity="info"></p-tag>
+            <p-tag [value]="move.humanScore || '0.00'" styleClass="text-xl px-3 py-2 font-bold" severity="info"></p-tag>
           </div>
           
           <!-- Move Category Badges -->
           <div class="flex flex-wrap align-items-center gap-2 mb-2">
-            <p-tag *ngIf="move.selectionReason !== 'book'" [value]="'Depth ' + move.depthReached" severity="secondary"></p-tag>
+            <p-tag *ngIf="move.selectionReason !== 'book' && move.depthReached" [value]="'Depth ' + move.depthReached" severity="secondary"></p-tag>
             
             <p-tag 
               *ngIf="move.selectionReason === 'book'" 
-              value="Master Grandmaster Repertoire" 
+              value="Grandmaster Book Line" 
               severity="info">
             </p-tag>
             <p-tag 
               *ngIf="move.selectionReason === 'top'" 
-              value="Best Tactical Move" 
+              value="#1 Best Move" 
               severity="success">
             </p-tag>
             <p-tag 
@@ -324,24 +283,9 @@
               severity="info">
             </p-tag>
             <p-tag 
-              *ngIf="move.selectionReason === 'natural'" 
-              value="Natural Alternative" 
-              severity="info">
-            </p-tag>
-            <p-tag 
-              *ngIf="move.selectionReason === 'inaccuracy'" 
-              value="Human Candidate (Anti-CAPS)" 
+              *ngIf="move.selectionReason === 'inaccuracy' || move.selectionReason === 'natural'" 
+              value="Alternative Line" 
               severity="warn">
-            </p-tag>
-            <p-tag 
-              *ngIf="move.selectionReason === 'mistake'" 
-              value="Human Positional Inaccuracy" 
-              severity="warn">
-            </p-tag>
-            <p-tag 
-              *ngIf="move.selectionReason === 'blunder'" 
-              value="Human Oversight (Calibrated)" 
-              severity="danger">
             </p-tag>
           </div>
 
@@ -366,33 +310,33 @@
       </ng-container>
     </p-card>
 
-    <!-- Alternative Candidate Lines -->
-    <p-panel header="Candidate Variations" [toggleable]="true" [collapsed]="false" styleClass="text-sm mt-1" *ngIf="gameState.evaluatedMoves().length > 1 && (!gameState.autoConcealMove() || gameState.isMoveRevealed())">
+    <!-- Candidate Variations (Multi-PV Lines) -->
+    <p-panel header="Candidate Variations (Multi-PV)" [toggleable]="true" [collapsed]="false" styleClass="text-sm mt-1" *ngIf="gameState.evaluatedMoves().length > 1 && (!gameState.autoConcealMove() || gameState.isMoveRevealed())">
       <div class="flex flex-column gap-2">
         <div 
           *ngFor="let move of gameState.evaluatedMoves(); let i = index"
           class="flex align-items-center justify-content-between p-2 border-round transition-colors"
-          [ngClass]="{'surface-200 border-1 border-primary-500': move.isSelected, 'surface-100': !move.isSelected}">
+          [ngClass]="{'surface-200 border-1 border-primary-500': move.isSelected || i === 0, 'surface-100': !move.isSelected && i !== 0}">
           <div class="flex align-items-center gap-2">
-            <span class="font-bold text-color" [ngClass]="{'text-base text-primary': move.isSelected}">
+            <span class="font-bold text-color" [ngClass]="{'text-base text-primary': move.isSelected || i === 0}">
               {{ i + 1 }}. {{ move.san }}
             </span>
             <span *ngIf="move.fromSquare && move.toSquare" class="text-xs font-mono text-color-secondary">
               ({{ move.fromSquare }} → {{ move.toSquare }})
             </span>
             <p-tag 
-              *ngIf="move.isSelected" 
-              value="Selected" 
+              *ngIf="i === 0" 
+              value="#1 Best" 
               severity="success"
               styleClass="text-xs">
             </p-tag>
           </div>
-          <p-tag [value]="move.humanScore || 'N/A'" severity="info" styleClass="text-xs"></p-tag>
+          <p-tag [value]="move.humanScore || '0.00'" severity="info" styleClass="text-xs"></p-tag>
         </div>
       </div>
     </p-panel>
 
-    <!-- Footer & Essential Anti-Detection Rules -->
+    <!-- Footer & Turn Indicator -->
     <div class="flex flex-column gap-2 mt-auto pt-3 border-top-1 surface-border">
       <div class="flex align-items-center justify-content-between">
         <div class="flex align-items-center gap-2">
@@ -411,19 +355,9 @@
         </div>
         
         <span class="text-xs font-medium text-color-secondary">
-          Target: {{ currentProfile.label.split(' - ')[0] }} ({{ currentProfile.targetAccuracyStr }})
+          Profile: {{ currentProfile.label.split(' - ')[0] }}
         </span>
       </div>
-
-      <p-panel header="FairPlay Operational Guidelines & Anti-Ban Rules" [toggleable]="true" [collapsed]="true" styleClass="text-xs">
-        <div class="flex flex-column gap-1 text-xs text-color-secondary line-height-3">
-          <div><strong>1. Match Your Account Rating:</strong> Always select a tier (800, 1100, 1400, 1700) matching your account rating. Playing 3000+ pure engine moves causes automated account closures.</div>
-          <div><strong>2. Keep Move Concealment ON:</strong> Never play tactical moves in under 2s. Let the countdown finish or listen for the chime.</div>
-          <div><strong>3. Hands-Free Mode (Zero Focus Loss):</strong> Keep the Side Panel docked. Do NOT click or tab away during active turns to prevent window blur telemetry flags.</div>
-          <div><strong>4. Allow Natural Inaccuracies:</strong> The Anti-CAPS streak limiter & Only-Move budget automatically enforce natural human variance to avoid engine fingerprinting.</div>
-          <div><strong>5. Mouse Movement Realism:</strong> Move your mouse naturally across the board before clicking pieces. Avoid instant teleporting clicks.</div>
-        </div>
-      </p-panel>
     </div>
 
   </ng-container>

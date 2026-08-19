@@ -53,9 +53,9 @@ describe('GameStateService', () => {
 
     // Initial position in book
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      sanMoves: []
+      type: 'pu',
+      f: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      m: []
     });
 
     await vi.advanceTimersByTimeAsync(200); // debounce
@@ -71,9 +71,9 @@ describe('GameStateService', () => {
     const handleMessage = (service as any).handleMessage.bind(service);
 
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: 'r1bqkb1r/1p2pppp/p1np1n2/8/3NP3/2N1B3/PPP2PPP/R2QKB1R b KQkq - 1 6',
-      sanMoves: ['e4', 'c5', 'Nf3', 'd6', 'd4', 'cxd4', 'Nxd4', 'Nf6', 'Nc3', 'a6', 'Be3']
+      type: 'pu',
+      f: 'r1bqkb1r/1p2pppp/p1np1n2/8/3NP3/2N1B3/PPP2PPP/R2QKB1R b KQkq - 1 6',
+      m: ['e4', 'c5', 'Nf3', 'd6', 'd4', 'cxd4', 'Nxd4', 'Nf6', 'Nc3', 'a6', 'Be3']
     });
 
     await vi.advanceTimersByTimeAsync(200);
@@ -84,7 +84,7 @@ describe('GameStateService', () => {
     expect(service.selectedMove()?.selectionReason).toBe('book');
   });
 
-  it('should trigger engine search with multi-PV and depth jitter when out of opening book', async () => {
+  it('should trigger engine search with multi-PV and calculate top tactical move when out of book', async () => {
     mockEngine.getBestMoves.mockReturnValue(
       Promise.resolve({
         lines: [
@@ -99,9 +99,9 @@ describe('GameStateService', () => {
     // Deep non-book position
     const nonBookFen = '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45';
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: nonBookFen,
-      sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
+      type: 'pu',
+      f: nonBookFen,
+      m: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
     });
 
     await vi.advanceTimersByTimeAsync(200);
@@ -111,9 +111,13 @@ describe('GameStateService', () => {
       nonBookFen,
       expect.objectContaining({ multipv: 4 })
     );
+
+    expect(service.selectedMove()).toBeTruthy();
+    expect(service.selectedMove()?.bestMove).toBe('d4d5');
+    expect(service.selectedMove()?.selectionReason).toBe('top');
   });
 
-  it('should handle Move Concealment (Delayed Reveal) and reveal after pacing countdown', async () => {
+  it('should handle Move Concealment (Delayed Reveal) when enabled and reveal after pacing countdown', async () => {
     mockEngine.getBestMoves.mockReturnValue(
       Promise.resolve({
         lines: [{ bestMove: 'd4d5', san: 'd5', pvIndex: 1, scoreCp: 20 }]
@@ -125,9 +129,9 @@ describe('GameStateService', () => {
 
     const handleMessage = (service as any).handleMessage.bind(service);
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
-      sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'd4']
+      type: 'pu',
+      f: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
+      m: ['e4', 'e5', 'Nf3', 'Nc6', 'd4']
     });
 
     await vi.advanceTimersByTimeAsync(200); // debounce & search resolution
@@ -156,9 +160,9 @@ describe('GameStateService', () => {
 
     const handleMessage = (service as any).handleMessage.bind(service);
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
-      sanMoves: ['e4', 'e5', 'Nf3']
+      type: 'pu',
+      f: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
+      m: ['e4', 'e5', 'Nf3']
     });
 
     await vi.advanceTimersByTimeAsync(200);
@@ -170,7 +174,7 @@ describe('GameStateService', () => {
     expect(service.isPacingSafe()).toBe(true);
   });
 
-  it('should enforce T1 streak limiter when consecutive top-engine moves are made', async () => {
+  it('should enforce T1 streak limiter when human mode is active and streak limit is reached', async () => {
     mockEngine.getBestMoves.mockReturnValue(
       Promise.resolve({
         lines: [
@@ -181,20 +185,21 @@ describe('GameStateService', () => {
     );
 
     service.selectedElo.set('1400'); // maxT1Streak = 2
+    service.humanMode.set(true);
     service.consecutiveT1Count.set(2); // Streak limit reached
 
     const handleMessage = (service as any).handleMessage.bind(service);
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
-      sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
+      type: 'pu',
+      f: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
+      m: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
     });
 
     await vi.advanceTimersByTimeAsync(200);
 
     const selected = service.selectedMove();
     expect(selected).toBeTruthy();
-    // Streak limit forces an inaccuracy / candidate alternative
+    // In human mode, streak limit forces a candidate alternative
     expect(selected?.selectionReason).toBe('inaccuracy');
   });
 
@@ -209,10 +214,10 @@ describe('GameStateService', () => {
 
     // Severe time pressure (10s remaining)
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
-      sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'd4'],
-      myClockSec: 10
+      type: 'pu',
+      f: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
+      m: ['e4', 'e5', 'Nf3', 'Nc6', 'd4'],
+      t1: 10
     });
 
     await vi.advanceTimersByTimeAsync(200);
@@ -233,18 +238,18 @@ describe('GameStateService', () => {
 
     // End of game 1 (40 moves played)
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
-      sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
+      type: 'pu',
+      f: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
+      m: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
     });
     await vi.advanceTimersByTimeAsync(200);
     expect(service.gameMovesCount()).toBeGreaterThan(0);
 
     // New Game 2 starts in SPA (moves count drops back to 0)
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      sanMoves: []
+      type: 'pu',
+      f: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      m: []
     });
     await vi.advanceTimersByTimeAsync(200);
 
@@ -254,7 +259,7 @@ describe('GameStateService', () => {
     expect(service.onlyMovesPlayed()).toBe(0);
   });
 
-  it('should enforce Only-Move budget when high-delta computer moves exceed profile limit', async () => {
+  it('should enforce Only-Move budget when human mode is active and computer moves exceed limit', async () => {
     mockEngine.getBestMoves.mockReturnValue(
       Promise.resolve({
         lines: [
@@ -265,20 +270,21 @@ describe('GameStateService', () => {
     );
 
     service.selectedElo.set('800'); // maxOnlyMovesPerGame = 1
+    service.humanMode.set(true);
     service.onlyMovesPlayed.set(1); // Budget already exhausted
 
     const handleMessage = (service as any).handleMessage.bind(service);
     handleMessage({
-      type: 'POSITION_UPDATE',
-      fen: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
-      sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
+      type: 'pu',
+      f: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45',
+      m: ['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4', 'Nxd4', 'a6', 'Nxc6']
     });
 
     await vi.advanceTimersByTimeAsync(200);
 
     const selected = service.selectedMove();
     expect(selected).toBeTruthy();
-    // Exceeded only-move budget forces a natural candidate alternative
+    // Exceeded only-move budget in human mode forces an alternative
     expect(selected?.selectionReason).not.toBe('top');
   });
 
@@ -286,12 +292,12 @@ describe('GameStateService', () => {
     mockEngine.isSearching.set(true);
 
     const handleMessage = (service as any).handleMessage.bind(service);
-    handleMessage({ type: 'POSITION_UPDATE', fen: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45' });
+    handleMessage({ type: 'pu', f: '8/5pk1/4p1p1/3pP2p/3P3P/5KP1/5P2/8 w - - 0 45' });
     await vi.advanceTimersByTimeAsync(200);
 
     expect(service.connectionStatus()).toBe('connected');
 
-    handleMessage({ type: 'CLEAR_STATE' });
+    handleMessage({ type: 'cs' });
 
     expect(service.connectionStatus()).toBe('no-game');
     expect(service.currentFen()).toBeNull();
@@ -305,22 +311,22 @@ describe('GameStateService', () => {
     const valid = (service as any).isValidPositionMessage.bind(service);
     const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-    expect(valid({ fen: startFen })).toBe(true);
-    expect(valid({ fen: startFen, myColor: 'b', myClockSec: 30, sanMoves: ['e4'] })).toBe(true);
+    expect(valid({ f: startFen })).toBe(true);
+    expect(valid({ f: startFen, c: 'b', t1: 30, m: ['e4'] })).toBe(true);
 
-    expect(valid({ fen: 'not-a-fen' })).toBe(false);
-    expect(valid({ fen: 42 })).toBe(false);
+    expect(valid({ f: 'not-a-fen' })).toBe(false);
+    expect(valid({ f: 42 })).toBe(false);
     expect(valid({})).toBe(false);
-    expect(valid({ fen: startFen, myClockSec: -5 })).toBe(false);
-    expect(valid({ fen: startFen, oppClockSec: Infinity })).toBe(false);
-    expect(valid({ fen: startFen, myColor: 'z' })).toBe(false);
-    expect(valid({ fen: startFen, sanMoves: 'e4' })).toBe(false);
-    expect(valid({ fen: startFen, sanMoves: ['e4', 5] })).toBe(false);
+    expect(valid({ f: startFen, t1: -5 })).toBe(false);
+    expect(valid({ f: startFen, t2: Infinity })).toBe(false);
+    expect(valid({ f: startFen, c: 'z' })).toBe(false);
+    expect(valid({ f: startFen, m: 'e4' })).toBe(false);
+    expect(valid({ f: startFen, m: ['e4', 5] })).toBe(false);
   });
 
   it('should ignore POSITION_UPDATE messages with an invalid FEN', async () => {
     const handleMessage = (service as any).handleMessage.bind(service);
-    handleMessage({ type: 'POSITION_UPDATE', fen: 'totally-invalid', sanMoves: [] });
+    handleMessage({ type: 'pu', f: 'totally-invalid', m: [] });
     await vi.advanceTimersByTimeAsync(200);
 
     expect(mockEngine.getBestMoves).not.toHaveBeenCalled();

@@ -47,7 +47,7 @@ describe('App Component', () => {
     expect(app).toBeTruthy();
     expect(app.eloProfiles.length).toBeGreaterThan(0);
     expect(app.eloProfiles.some(p => p.value === '1400')).toBe(true);
-    expect(app.currentProfile.tier).toBe('1400');
+    expect(app.currentProfile.tier).toBe('max');
   });
 
   it('should format clock seconds correctly', () => {
@@ -78,9 +78,9 @@ describe('App Component', () => {
     app.toggleCompactHud();
     expect(app.gameState.compactHudMode()).toBe(true);
 
-    expect(app.gameState.autoConcealMove()).toBe(true);
-    app.toggleConcealment();
     expect(app.gameState.autoConcealMove()).toBe(false);
+    app.toggleConcealment();
+    expect(app.gameState.autoConcealMove()).toBe(true);
   });
 
   it('should reveal move now on revealMoveNow call', () => {
@@ -96,6 +96,6 @@ describe('App Component', () => {
     });
 
     app.refreshPosition();
-    expect((window as any).chrome.tabs.sendMessage).toHaveBeenCalledWith(123, { type: 'REQUEST_POSITION' });
+    expect((window as any).chrome.tabs.sendMessage).toHaveBeenCalledWith(123, { type: 'rp' });
   });
 });

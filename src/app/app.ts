@@ -34,24 +34,24 @@ export class App {
   gameState = inject(GameStateService);
 
   eloProfiles = [
-    { label: '1400 - Intermediate (~80% CAPS, Safe)', value: '1400' },
-    { label: '1700 - Advanced (~87% CAPS, Safe)', value: '1700' },
-    { label: '1100 - Casual (~72% CAPS, Safe)', value: '1100' },
-    { label: '800 - Beginner (~62% CAPS, Safe)', value: '800' },
-    { label: '2000 - Expert (~92% CAPS)', value: '2000' },
+    { label: 'Max - Pure Engine 3000+ (Maximum Strength)', value: 'max' },
     { label: '2300 - Master (~95% CAPS)', value: '2300' },
-    { label: 'Max - Pure Engine 3000+ (High Ban Risk)', value: 'max' }
+    { label: '2000 - Expert (~92% CAPS)', value: '2000' },
+    { label: '1700 - Advanced (~87% CAPS)', value: '1700' },
+    { label: '1400 - Intermediate (~80% CAPS)', value: '1400' },
+    { label: '1100 - Casual (~72% CAPS)', value: '1100' },
+    { label: '800 - Beginner (~62% CAPS)', value: '800' }
   ];
 
   searchTimeOptions = [
     { label: '1s (Fast Search)', value: 1000 },
     { label: '2s (Strong Search)', value: 2000 },
-    { label: '3s (Deep Search)', value: 3000 },
-    { label: '5s (Master Analysis)', value: 5000 }
+    { label: '3s (Deep Calculation)', value: 3000 },
+    { label: '5s (Grandmaster Deep Search)', value: 5000 }
   ];
 
   get currentProfile() {
-    return ELO_PROFILES[this.gameState.selectedElo()] || ELO_PROFILES['1400'];
+    return ELO_PROFILES[this.gameState.selectedElo()] || ELO_PROFILES['max'];
   }
 
   getPacingLabel(category: PacingCategory): string {
